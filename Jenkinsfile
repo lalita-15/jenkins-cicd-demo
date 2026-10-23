@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -6,7 +7,6 @@ pipeline {
     }
 
     environment {
-        APP_NAME = 'jenkins-cicd-demo'
         IMAGE_NAME = 'jenkins-cicd-demo'
         CONTAINER_NAME = 'jenkins-container'
         APP_PORT = '3000'
@@ -15,56 +15,75 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out the application sourcecode...'
+                echo 'Checking out source code from GitHub'
                 checkout scm
             }
         }
+
         stage('Build') {
             steps {
                 echo 'Building Docker image'
+
                 powershell '''
                     docker build -t ${env:IMAGE_NAME}:${env:BUILD_NUMBER} .
-                '''
-            }
-        }
-        stage('Test') {
-            steps {
-                echo 'Checking Syntax and Running tests'
-                powershell '''
-                docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Application syntax test failed"
-                }
-                '''
-
-                
-    
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo 'Deploying application container'
-                powershell '''
-                    docker rm -f ${env:CONTAINER_NAME} 2>$null
-                    docker run -d --name ${env:CONTAINER_NAME} `
-                      --restart unless-stopped `
-                      -p 3000:3000 `
-                      ${env:IMAGE_NAME}:${env:BUILD_NUMBER}
 
                     if ($LASTEXITCODE -ne 0) {
-                        exit 1
+                        throw "Docker image build failed"
                     }
                 '''
             }
         }
 
+        stage('Test') {
+            steps {
+                echo 'Testing application syntax inside Docker'
+
+                powershell '''
+                    docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Application syntax test failed"
+                    }
+
+                    Write-Host "Application syntax test passed"
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying application container'
+
+                powershell '''
+                    docker rm -f ${env:CONTAINER_NAME} 2>$null
+
+                    docker run -d `
+                        --name ${env:CONTAINER_NAME} `
+                        --restart unless-stopped `
+                        -p ${env:APP_PORT}:3000 `
+                        ${env:IMAGE_NAME}:${env:BUILD_NUMBER}
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Application deployment failed"
+                    }
+
+                    Write-Host "Deployment command completed"
+                '''
+            }
+        }
     }
 
-post {
+    post {
         success {
-            echo 'CI/CD pipeline completed successfully!'
+            echo 'SUCCESS: Jenkins CI/CD pipeline completed!'
         }
+
         failure {
-            echo 'Pipeline failed. Check Console Output.'
+            echo 'FAILURE: Check the Console Output for details.'
+        }
+
+        always {
+            echo 'Pipeline execution finished.'
         }
     }
+}
