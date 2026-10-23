@@ -7,12 +7,13 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = 'jenkins-cicd-demo'
+        IMAGE_NAME = 'lalita15/jenkins-cicd-demo'
         CONTAINER_NAME = 'jenkins-container'
         APP_PORT = '3000'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo 'Checking out source code from GitHub'
@@ -29,6 +30,12 @@ pipeline {
 
                     if ($LASTEXITCODE -ne 0) {
                         throw "Docker image build failed"
+                    }
+
+                    docker tag ${env:IMAGE_NAME}:${env:BUILD_NUMBER} ${env:IMAGE_NAME}:latest
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker image tagging failed"
                     }
                 '''
             }
@@ -50,6 +57,43 @@ pipeline {
             }
         }
 
+        stage('Push to Docker Hub') {
+            steps {
+                echo 'Logging in and pushing images to Docker Hub'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    powershell '''
+                        $ErrorActionPreference = 'Stop'
+                        $env:DOCKERHUB_TOKEN | docker login --username $env:DOCKERHUB_USER --password-stdin
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub login failed"
+                        }
+
+                        docker push ${env:IMAGE_NAME}:${env:BUILD_NUMBER}
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub versioned image push failed"
+                        }
+
+                        docker push ${env:IMAGE_NAME}:latest
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub latest image push failed"
+                        }
+
+                        Write-Host "Both Docker image tags pushed successfully"
+                    '''
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 echo 'Deploying application container'
@@ -67,7 +111,7 @@ pipeline {
                         throw "Application deployment failed"
                     }
 
-                    Write-Host "Deployment command completed"
+                    Write-Host "Application deployment completed"
                 '''
             }
         }
@@ -75,11 +119,11 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Jenkins CI/CD pipeline completed!'
+            echo 'SUCCESS: CI/CD pipeline completed!'
         }
 
         failure {
-            echo 'FAILURE: Check the Console Output for details.'
+            echo 'FAILURE: Check Console Output for details.'
         }
 
         always {
