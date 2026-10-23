@@ -31,11 +31,12 @@ pipeline {
             steps {
                 echo 'Checking Syntax and Running tests'
                 powershell '''
-                    node --check app.js
-                    if ($LASTEXITCODE -ne 0) {
-                        exit 1
-                    }
+                docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Application syntax test failed"
+                }
                 '''
+
                 
     
             }
