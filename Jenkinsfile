@@ -21,72 +21,9 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Docker Hub Login') {
             steps {
-                echo 'Building Docker image'
-
-                powershell '''
-                    docker build -t ${env:IMAGE_NAME}:${env:BUILD_NUMBER} .
-
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker image build failed"
-                    }
-
-                    docker tag ${env:IMAGE_NAME}:${env:BUILD_NUMBER} ${env:IMAGE_NAME}:latest
-
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Docker image tagging failed"
-                    }
-
-                    Write-Host "Docker image built successfully"
-                '''
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo 'Testing application syntax'
-
-                powershell '''
-                    docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
-
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Application syntax test failed"
-                    }
-
-                    Write-Host "Application syntax test passed"
-                '''
-            }
-        }
-
-        stage('Verify Docker Hub Credentials') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-creds3',
-                        usernameVariable: 'DOCKERHUB_USER',
-                        passwordVariable: 'DOCKERHUB_TOKEN'
-                    )
-                ]) {
-                    powershell '''
-                        if ($env:DOCKERHUB_USER -ne "lalita15") {
-                            throw "Unexpected Docker Hub username"
-                        }
-
-                        if ([string]::IsNullOrWhiteSpace($env:DOCKERHUB_TOKEN)) {
-                            throw "Docker Hub token is empty"
-                        }
-
-                        Write-Host "Username check passed"
-                        Write-Host "Token is present"
-                    '''
-                }
-            }
-        }
-
-        stage('Push to Docker Hub') {
-            steps {
-                echo 'Logging in and pushing Docker images'
+                echo 'Authenticating with Docker Hub'
 
                 withCredentials([
                     usernamePassword(
@@ -105,6 +42,73 @@ pipeline {
                         }
 
                         Write-Host "Docker Hub login successful"
+                    '''
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building Docker image'
+
+                powershell '''
+                    docker build --pull=false `
+                        -t ${env:IMAGE_NAME}:${env:BUILD_NUMBER} .
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker image build failed"
+                    }
+
+                    docker tag `
+                        ${env:IMAGE_NAME}:${env:BUILD_NUMBER} `
+                        ${env:IMAGE_NAME}:latest
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Docker image tagging failed"
+                    }
+
+                    Write-Host "Docker image built successfully"
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Testing Node.js application syntax'
+
+                powershell '''
+                    docker run --rm `
+                        ${env:IMAGE_NAME}:${env:BUILD_NUMBER} `
+                        node --check app.js
+
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Application syntax test failed"
+                    }
+
+                    Write-Host "Application syntax test passed"
+                '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                echo 'Pushing versioned and latest images'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds3',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    powershell '''
+                        $env:DOCKERHUB_TOKEN | docker login `
+                            --username $env:DOCKERHUB_USER `
+                            --password-stdin
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "Docker Hub login failed before push"
+                        }
 
                         docker push ${env:IMAGE_NAME}:${env:BUILD_NUMBER}
 
@@ -118,7 +122,7 @@ pipeline {
                             throw "Latest image push failed"
                         }
 
-                        Write-Host "Both image tags pushed successfully"
+                        Write-Host "Images pushed successfully"
                     '''
                 }
             }
@@ -126,7 +130,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                echo 'Deploying application container'
+                echo 'Deploying application container locally'
 
                 powershell '''
                     docker rm -f ${env:CONTAINER_NAME} 2>$null
@@ -141,7 +145,8 @@ pipeline {
                         throw "Application deployment failed"
                     }
 
-                    Write-Host "Deployment command completed"
+                    Write-Host "Application deployed successfully"
+                    Write-Host "Open http://localhost:3000"
                 '''
             }
         }
@@ -153,7 +158,7 @@ pipeline {
         }
 
         failure {
-            echo 'FAILURE: Check Console Output for details.'
+            echo 'FAILURE: Check the stage where the pipeline failed.'
         }
 
         always {
