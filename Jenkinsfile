@@ -37,13 +37,15 @@ pipeline {
                     if ($LASTEXITCODE -ne 0) {
                         throw "Docker image tagging failed"
                     }
+
+                    Write-Host "Docker image built successfully"
                 '''
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Testing application syntax inside Docker'
+                echo 'Testing Node.js application syntax'
 
                 powershell '''
                     docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
@@ -59,7 +61,7 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                echo 'Logging in and pushing images to Docker Hub'
+                echo 'Authenticating and pushing Docker images'
 
                 withCredentials([
                     usernamePassword(
@@ -70,22 +72,27 @@ pipeline {
                 ]) {
                     powershell '''
                         $ErrorActionPreference = 'Stop'
-                        $env:DOCKERHUB_TOKEN | docker login --username $env:DOCKERHUB_USER --password-stdin
+
+                        $env:DOCKERHUB_TOKEN | docker login `
+                            --username $env:DOCKERHUB_USER `
+                            --password-stdin
 
                         if ($LASTEXITCODE -ne 0) {
                             throw "Docker Hub login failed"
                         }
 
+                        Write-Host "Docker Hub login successful"
+
                         docker push ${env:IMAGE_NAME}:${env:BUILD_NUMBER}
 
                         if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Hub versioned image push failed"
+                            throw "Versioned image push failed"
                         }
 
                         docker push ${env:IMAGE_NAME}:latest
 
                         if ($LASTEXITCODE -ne 0) {
-                            throw "Docker Hub latest image push failed"
+                            throw "Latest image push failed"
                         }
 
                         Write-Host "Both Docker image tags pushed successfully"
