@@ -45,7 +45,7 @@ pipeline {
 
         stage('Test') {
             steps {
-                echo 'Testing Node.js application syntax'
+                echo 'Testing application syntax'
 
                 powershell '''
                     docker run --rm ${env:IMAGE_NAME}:${env:BUILD_NUMBER} node --check app.js
@@ -59,9 +59,34 @@ pipeline {
             }
         }
 
+        stage('Verify Docker Hub Credentials') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds3',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    powershell '''
+                        if ($env:DOCKERHUB_USER -ne "lalita15") {
+                            throw "Unexpected Docker Hub username"
+                        }
+
+                        if ([string]::IsNullOrWhiteSpace($env:DOCKERHUB_TOKEN)) {
+                            throw "Docker Hub token is empty"
+                        }
+
+                        Write-Host "Username check passed"
+                        Write-Host "Token is present"
+                    '''
+                }
+            }
+        }
+
         stage('Push to Docker Hub') {
             steps {
-                echo 'Authenticating and pushing Docker images'
+                echo 'Logging in and pushing Docker images'
 
                 withCredentials([
                     usernamePassword(
@@ -71,8 +96,6 @@ pipeline {
                     )
                 ]) {
                     powershell '''
-                        $ErrorActionPreference = 'Stop'
-
                         $env:DOCKERHUB_TOKEN | docker login `
                             --username $env:DOCKERHUB_USER `
                             --password-stdin
@@ -95,7 +118,7 @@ pipeline {
                             throw "Latest image push failed"
                         }
 
-                        Write-Host "Both Docker image tags pushed successfully"
+                        Write-Host "Both image tags pushed successfully"
                     '''
                 }
             }
@@ -118,7 +141,7 @@ pipeline {
                         throw "Application deployment failed"
                     }
 
-                    Write-Host "Application deployment completed"
+                    Write-Host "Deployment command completed"
                 '''
             }
         }
